@@ -1,36 +1,52 @@
 'use strict';
 
+// psql -U dev -d noteful-app -f ./db/noteful-app.sql
+
 const express = require('express');
 
 // Create an router instance (aka "mini-app")
 const router = express.Router();
 
 // TEMP: Simple In-Memory Database
-const data = require('../db/notes');
-const simDB = require('../db/simDB');
-const notes = simDB.initialize(data);
+// const data = require('../db/notes');
+// const simDB = require('../db/simDB');
+// const notes = simDB.initialize(data);
+
+const knex = require('../knex');
 
 // Get All (and search by query)
 router.get('/', (req, res, next) => {
   const { searchTerm } = req.query;
 
-  notes.filter(searchTerm)
-    .then(list => {
-      res.json(list);
+  knex
+    .select('notes.id', 'title', 'content')
+    .from('notes')
+    .modify(queryBuilder => {
+      if (searchTerm) {
+        queryBuilder.where('title', 'like', `%${searchTerm}%`);
+      }
+    })
+    .orderBy('notes.id')
+    .then(results => {
+      res.json(results);
     })
     .catch(err => {
       next(err);
     });
+
 });
 
 // Get a single item
 router.get('/:id', (req, res, next) => {
   const id = req.params.id;
 
-  notes.find(id)
-    .then(item => {
-      if (item) {
-        res.json(item);
+  knex
+    .select('notes.id', 'title', 'content')
+    .from('notes')
+    .where('notes.id', id)
+    .then(results => {
+      if(results[0]) {
+        res.json(results[0]);
       } else {
         next();
       }
@@ -61,13 +77,13 @@ router.put('/:id', (req, res, next) => {
     return next(err);
   }
 
-  notes.update(id, updateObj)
-    .then(item => {
-      if (item) {
-        res.json(item);
-      } else {
-        next();
-      }
+  knex
+    .select('notes.id', 'title', 'content')
+    .from('notes')
+    .where('notes.id', `${id}`)
+    .update(updateObj, ['notes.id', 'notes.title', 'notes.content'])
+    .then(results => {
+      res.json(results[0]);
     })
     .catch(err => {
       next(err);
@@ -86,28 +102,31 @@ router.post('/', (req, res, next) => {
     return next(err);
   }
 
-  notes.create(newItem)
-    .then(item => {
-      if (item) {
-        res.location(`http://${req.headers.host}/notes/${item.id}`).status(201).json(item);
-      }
+  knex('notes')
+    .insert(newItem, ['notes.id', 'title', 'content'])
+    .then(results => {
+      res.json(results[0]);
     })
     .catch(err => {
       next(err);
     });
+
 });
 
 // Delete an item
 router.delete('/:id', (req, res, next) => {
   const id = req.params.id;
 
-  notes.delete(id)
-    .then(() => {
-      res.sendStatus(204);
+  knex('notes')
+    .where('notes.id', id)
+    .del()
+    .then(results => {
+      res.json(results);
     })
     .catch(err => {
       next(err);
     });
+
 });
 
 module.exports = router;
